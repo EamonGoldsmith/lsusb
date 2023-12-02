@@ -1,4 +1,4 @@
 #!/bin/sh
 
 lsusb: main.c
-	$(CC) main.c -lusb -o lsusb
+	$(CC) main.c -lc -lusb -o lsusb
