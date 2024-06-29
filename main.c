@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <libusb.h>
-#include <string.h>
 
 const struct libusb_version *version;
 libusb_context *ctx;
