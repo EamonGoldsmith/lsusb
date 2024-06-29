@@ -1,69 +1,73 @@
 #include <stdio.h>
 #include <libusb.h>
+#include <string.h>
 
-static void print_devices(libusb_device** device_list)
+const struct libusb_version *version;
+libusb_context *ctx;
+
+#define MAX_PATH 20
+
+const char* speed_string(uint8_t s)
 {
-	libusb_device* dev;
-	int i = 0, j = 0;
-	uint8_t path[8];
-
-	while ((dev = device_list[i++]) != NULL) {
-		struct libusb_device_descriptor desc;
-		int r = libusb_get_device_descriptor(dev, &desc);
-		if (r < 0) {
-			fprintf(stderr, "failed to get descriptor\n");
-			return;
-		}
-
-		printf("%04x:%04x (bus %d, device %d)",
-				desc.idVendor, desc.idProduct,
-				libusb_get_bus_number(dev),
-				libusb_get_device_address(dev));
-
-		r = libusb_get_port_numbers(dev, path, sizeof(path));
-		if (r > 0) {
-			printf(" path: %d", path[0]);
-			for (j = 1; j < r; j++) {
-				printf(".%d", path[j]);
-			}
-		}
-		printf("\n");
+	switch(s)
+	{
+		case LIBUSB_SPEED_UNKNOWN:
+			return "unkown speed";
+		case LIBUSB_SPEED_LOW:
+			return "low (1.5MBs)";
+		case LIBUSB_SPEED_FULL:
+			return "full (12MBs)";
+		case LIBUSB_SPEED_HIGH:
+			return "high (480MBs)";
+		default:
+			return "error on speed";
 	}
 }
 
 int main(int argc, char* argv[])
 {
-	struct libusb_context* ctx;
-	int err = libusb_init(&ctx); 
+	// get the library version
+	if ((version = libusb_get_version()) == NULL) {
+		printf("failed getting library version\n");
+		return 1;
+	}
+	
+	// initialise
+	int err = libusb_init(&ctx);
 	if (err != 0) {
-		fprintf(stderr, "failed: %s\n", libusb_strerror(err));
+		printf("failed to get library context\n");
 		return 1;
 	}
+	printf("initialisation produced: %s\n", libusb_error_name(err));
 
-	const struct libusb_version* version;
-	version = libusb_get_version();
+	// create device list
+	libusb_device **list;
+	size_t ndevs = libusb_get_device_list(ctx, &list);
 
-	printf("%i.%i, %s\n", version->major, version->minor, version->describe);
+	printf("%zu devices found\n", ndevs);
 
-	libusb_device** device_list = NULL;
-	size_t num_devices = libusb_get_device_list(ctx, &device_list);
+	for (size_t i = 0; i < ndevs; i++) {
+		struct libusb_device* d = list[i];
+		struct libusb_device_descriptor desc;
+		int err = libusb_get_device_descriptor(d, &desc);
+		if (err > 0) {
+			printf("failed to get the device path: %s\n",
+					libusb_error_name(err));
+			continue;
+		}
 
-	if (num_devices < 0) {
-		fprintf(stderr, "failed: %s\n", libusb_strerror(num_devices));
-		libusb_exit(ctx);
-		return 1;
-	} else if (num_devices == 0) {
-		// nothing to do
-		printf("no usb devices connected\n");
-		libusb_exit(ctx);
-		return 0;
-	} else {
-		print_devices(device_list);
+		printf("%04x:%04x (/dev/usb/%d.%d) %s\n",
+				desc.idVendor,
+				desc.idProduct,
+				libusb_get_bus_number(d),
+				libusb_get_device_address(d),
+				speed_string(libusb_get_device_speed(d)));
 	}
-
-	//free all devices
-	libusb_free_device_list(device_list, num_devices);
+	
+	// destroy device list in list
+	libusb_free_device_list(list, 1);
 
 	libusb_exit(ctx);
+
 	return 0;
 }
